@@ -65,6 +65,7 @@ const authRouter = require('./routes/auth');
 const projectsRouter = require('./routes/projects');
 const methodsRouter = require('./routes/methods');
 const historyRouter = require('./routes/history');
+const proxyRouter = require('./routes/proxy');
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,9 @@ app.use('/api/projects', projectsRouter);
 app.use('/api', methodsRouter);
 
 app.use('/api/history', historyRouter);
+
+// Proxy router — forwards requests server-side to bypass browser CORS
+app.use('/api/proxy', proxyRouter);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 

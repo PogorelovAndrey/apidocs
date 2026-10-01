@@ -105,51 +105,54 @@ export default function HttpClient({ method: methodData, onHistoryUpdate }) {
     setResponse(null)
     const url = buildUrl()
     const reqHeaders = buildHeaders()
-    const start = Date.now()
 
     try {
-      const fetchOptions = {
+      // Route through backend proxy to avoid CORS restrictions
+      const proxyPayload = {
+        url,
         method: reqMethod,
         headers: reqHeaders,
-      }
-      if (['POST', 'PUT', 'PATCH'].includes(reqMethod) && bodyText.trim()) {
-        fetchOptions.body = bodyText
+        body: ['POST', 'PUT', 'PATCH'].includes(reqMethod) && bodyText.trim()
+          ? bodyText
+          : null,
       }
 
-      const res = await fetch(url, fetchOptions)
-      const time = Date.now() - start
-      const resText = await res.text()
-      const resHeaders = {}
-      res.headers.forEach((v, k) => { resHeaders[k] = v })
+      const proxyRes = await apiPost('/proxy', proxyPayload)
 
-      const result = {
-        status: res.status,
-        statusText: res.statusText,
-        headers: resHeaders,
-        body: resText,
-        time,
-      }
+      // proxyRes contains { status, statusText, headers, body, time }
+      // — or { error, time } on network-level failure (502 from backend)
+      const result = proxyRes.error
+        ? { error: proxyRes.error, time: proxyRes.time }
+        : {
+            status: proxyRes.status,
+            statusText: proxyRes.statusText,
+            headers: proxyRes.headers || {},
+            body: proxyRes.body,
+            time: proxyRes.time,
+          }
+
       setResponse(result)
 
-      // Save to history
-      try {
-        const entry = {
-          methodId: methodData?.id,
-          methodName: methodData?.name || url,
-          projectName: methodData?.projectName || '',
-          request: { method: reqMethod, url, headers: reqHeaders, body: bodyText || null },
-          response: result,
-          timestamp: new Date().toISOString(),
-          userId: user?.id,
+      // Save to history (only on successful proxy calls with a real HTTP status)
+      if (!result.error) {
+        try {
+          const entry = {
+            methodId: methodData?.id,
+            methodName: methodData?.name || url,
+            projectName: methodData?.projectName || '',
+            request: { method: reqMethod, url, headers: reqHeaders, body: bodyText || null },
+            response: result,
+            timestamp: new Date().toISOString(),
+            userId: user?.id,
+          }
+          await apiPost('/history', entry)
+          onHistoryUpdate?.()
+        } catch {
+          // history save failure is non-critical
         }
-        await apiPost('/history', entry)
-        onHistoryUpdate?.()
-      } catch {
-        // history save failure is non-critical
       }
     } catch (err) {
-      const time = Date.now() - start
-      setResponse({ error: err.message, time })
+      setResponse({ error: err.message, time: 0 })
     } finally {
       setSending(false)
     }
